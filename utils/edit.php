@@ -1,6 +1,45 @@
 <?php
 session_start();
 
+    // Si l'identifiant du film à modifier n'existe pas dans $_GET 
+    if ( !isset($_GET['film_id']) || empty($_GET['film_id']) ) 
+    {
+        // On redirige l'utilisateur vers la page d'accueil
+        // On arrête l'exécution du script
+        return header("Location: index.php");
+    }
+
+        
+    // Dans le cas contraire,
+        
+    // Récupérer l'identifiant du film tout en protégeant le système contre les failles de type XSS
+    $film_id = (int) htmlspecialchars(trim($_GET['film_id']));
+
+
+    // Etablir une connexion avec la base de données
+    require __DIR__ . "/db/connexion.php";
+
+    // Effectuer une requête pour vérifier que l'identifiant appartient à celui d'un film de la table "film"
+    $req = $db->prepare("SELECT * FROM film WHERE id=:id LIMIT 1");
+    $req->bindValue(":id", $film_id);
+    $req->execute();
+    
+    // Compter le nombre d'enregistrement récupéré de la table film
+    $row = $req->rowCount();
+
+    // Si ce n'est pas égal à 1
+    if ($row != 1) 
+    {
+        // On redirige l'utilisateur vers la page d'accueil
+        // On arrête l'exécution du script
+        return header("Location: index.php");
+    }
+
+    // Dans le cas contraire,
+    // Récupérons les informations du film à modifier
+    $film = $req->fetch();
+
+
     // Si les données arrivent au serveur via la méthode "POST",
     if ($_SERVER['REQUEST_METHOD'] === "POST") 
     {
@@ -117,23 +156,26 @@ session_start();
             return header("Location: $_SERVER[HTTP_REFERER]");
         }
         
-        
         // Dans le cas contraire,
+
+        // Si une note a été envoyée,
         if ( isset($post_clean['review']) && !empty($post_clean['review']) ) 
         {
+            // L'arrondir à une chiffre apreès la virgule
             $review_rounded = round($post_clean['review'], 1);
         }
 
         // Etablir une connexion avec la base de données
         require __DIR__ . "/db/connexion.php";
         
-        // Effectuer une requête d'insertion des données dans la table "film"
-        $req = $db->prepare("INSERT INTO film (name, actors, review, comment, created_at, updated_at) VALUES (:name, :actors, :review, :comment, now(), now() ) ");
+        // Effectuer une requête de modification du film dans la table "film"
+        $req = $db->prepare("UPDATE film SET name=:name, actors=:actors, review=:review, comment=:comment, updated_at=now() WHERE id=:id");
 
         $req->bindValue(":name",    $post_clean['name']);
         $req->bindValue(":actors",  $post_clean['actors']);
         $req->bindValue(":review",  isset($review_rounded) ? $review_rounded : '' );
         $req->bindValue(":comment", $post_clean['comment']);
+        $req->bindValue(":id",      $film['id']);
 
         $req->execute();
 
@@ -141,7 +183,7 @@ session_start();
         $req->closeCursor();
 
         // Générons un message flash de succès
-        $_SESSION['success'] = "<em>" . stripslashes($post_clean['name']) . "</em> a été ajouté à la liste avec succès.";
+        $_SESSION['success'] = "<em>" . stripslashes($post_clean['name']) . "</em> a été modifié avec succès.";
         
         // Effectuer une redirection vers la page d'accueil
         // Arrêter l'exécution du script
@@ -159,7 +201,7 @@ session_start();
     
     <!-- Chargement du contenu spécific à la page -->
     <main class="container">
-        <h1 class="text-center my-3 display-5">Nouveau film</h1>
+        <h1 class="text-center my-3 display-5">Modifier ce film</h1>
 
         <div class="container">
             <div class="row">
@@ -179,19 +221,19 @@ session_start();
                     <form method="post">
                         <div class="mb-3">
                             <label for="name">Le nom du film <span class="text-danger">*</span></label>
-                            <input type="text" name="name" id="name" class="form-control" autofocus maxlength="255" value="<?= (isset($_SESSION['old']['name']) && !empty($_SESSION['old']['name'])) ? stripslashes($_SESSION['old']['name']) : ''; unset($_SESSION['old']['name']); ?>">
+                            <input type="text" name="name" id="name" class="form-control" autofocus maxlength="255" value="<?= (isset($_SESSION['old']['name']) && !empty($_SESSION['old']['name'])) ? stripslashes($_SESSION['old']['name']) : htmlspecialchars(stripslashes($film['name'])); unset($_SESSION['old']['name']); ?>">
                         </div>
                         <div class="mb-3">
                             <label for="actors">Le nom du/des acteur(s) <span class="text-danger">*</span></label>
-                            <input type="text" name="actors" id="actors" class="form-control" maxlength="255" value="<?= (isset($_SESSION['old']['actors']) && !empty($_SESSION['old']['actors'])) ? stripslashes($_SESSION['old']['actors']) : ''; unset($_SESSION['old']['actors']); ?>">
+                            <input type="text" name="actors" id="actors" class="form-control" maxlength="255" value="<?= (isset($_SESSION['old']['actors']) && !empty($_SESSION['old']['actors'])) ? stripslashes($_SESSION['old']['actors']) : htmlspecialchars(stripslashes($film['actors'])); unset($_SESSION['old']['actors']); ?>">
                         </div>
                         <div class="mb-3">
                             <label for="review">La note / 5</label>
-                            <input type="number" name="review" id="review" step=".1" min="0" max="5" class="form-control" value="<?= (isset($_SESSION['old']['review']) && !empty($_SESSION['old']['review'])) ? stripslashes($_SESSION['old']['review']) : ''; unset($_SESSION['old']['review']); ?>">
+                            <input type="number" name="review" id="review" step=".1" min="0" max="5" class="form-control" value="<?= (isset($_SESSION['old']['review']) && !empty($_SESSION['old']['review'])) ? stripslashes($_SESSION['old']['review']) : htmlspecialchars(stripslashes($film['review'])); unset($_SESSION['old']['review']); ?>">
                         </div>
                         <div class="mb-3">
                             <label for="comment">Un commentaire ?</label>
-                            <textarea name="comment" id="comment" class="form-control" rows="4"><?= (isset($_SESSION['old']['comment']) && !empty($_SESSION['old']['comment'])) ? stripslashes($_SESSION['old']['comment']) : ''; unset($_SESSION['old']['comment']); ?></textarea>
+                            <textarea name="comment" id="comment" class="form-control" rows="4"><?= (isset($_SESSION['old']['comment']) && !empty($_SESSION['old']['comment'])) ? stripslashes($_SESSION['old']['comment']) : htmlspecialchars(stripslashes($film['comment'])); unset($_SESSION['old']['comment']); ?></textarea>
                         </div>
                         <div class="mb-3">
                             <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token']; ?>">
